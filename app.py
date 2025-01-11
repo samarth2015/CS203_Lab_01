@@ -45,7 +45,25 @@ def course_details(code):
         return redirect(url_for('course_catalog'))
     return render_template('course_details.html', course=course)
 
-
-
+@app.route('/form')
+def forming():
+    return render_template("form.html")
+@app.route('/submit_detail',methods=["POST","GET"])
+def submitting():
+    code=request.form["code"]
+    name=request.form["name"]
+    instructor=request.form["instructor"]
+    semester=request.form["semester"]
+    schedule=request.form["schedule"]
+    classroom=request.form["classroom"]
+    prerequisites=request.form["prerequisites"]
+    grading=request.form["grading"]
+    description=request.form["description"]
+    course={"code":code,"name":name,"instructor":instructor,"semester":semester,"schedule":schedule,"classroom":classroom,
+            "prerequisites":prerequisites,"grading":grading,"description":description}
+    save_courses(course) 
+    flash(f"Course '{name}' has been successfully added!", "success")
+    return redirect(url_for('course_catalog'))
+   
 if __name__ == '__main__':
     app.run(debug=True)
