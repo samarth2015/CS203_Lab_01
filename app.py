@@ -1,12 +1,37 @@
 import json
 import os
 from flask import Flask, render_template, request, redirect, url_for, flash
+import logging
+from logging.handlers import RotatingFileHandler
 
 # Flask App Initialization
 app = Flask(__name__)
 app.secret_key = 'secret'
 COURSE_FILE = 'course_catalog.json'
 
+# Logging Configuration
+for handler in logging.root.handlers[:]:
+    logging.root.removeHandler(handler)
+
+# Log to a file in JSON format
+class JsonFormatter(logging.Formatter):
+    def format(self, record):
+        log_record = {
+            'timestamp': self.formatTime(record),
+            'level': record.levelname,
+            'message': record.getMessage(),
+            'logger_name': record.name,
+            'path': record.pathname,
+            'line': record.lineno,
+        }
+        return json.dumps(log_record)
+
+logging.basicConfig(level=logging.DEBUG)
+handler = logging.StreamHandler()
+handler.setFormatter(JsonFormatter())
+logger = logging.getLogger('JsonLogger')
+logger.setLevel(logging.DEBUG)
+logger.addHandler(handler)
 
 # Utility Functions
 def load_courses():
@@ -48,6 +73,7 @@ def course_details(code):
 @app.route('/form')
 def forming():
     return render_template("form.html")
+
 @app.route('/submit_detail',methods=["POST","GET"])
 def submitting():
     code=request.form["code"]
@@ -59,10 +85,14 @@ def submitting():
     prerequisites=request.form["prerequisites"]
     grading=request.form["grading"]
     description=request.form["description"]
-    course={"code":code,"name":name,"instructor":instructor,"semester":semester,"schedule":schedule,"classroom":classroom,
-            "prerequisites":prerequisites,"grading":grading,"description":description}
-    save_courses(course) 
-    flash(f"Course '{name}' has been successfully added!", "success")
+    if code == "" or name == "" or instructor == "" or semester == "":
+        logger.error("Please fill in all the required fields")
+        flash("Some field were missing. Course Not Added", "error")
+    else:
+        course={"code":code,"name":name,"instructor":instructor,"semester":semester,"schedule":schedule,"classroom":classroom,
+                "prerequisites":prerequisites,"grading":grading,"description":description}
+        save_courses(course) 
+        flash(f"Course '{name}' has been successfully added!", "success")
     return redirect(url_for('course_catalog'))
    
 if __name__ == '__main__':
