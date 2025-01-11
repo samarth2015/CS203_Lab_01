@@ -20,5 +20,16 @@
         "prerequisites": "Basic Python, Linux",
         "grading": "50% Assignment, 50% Quiz",
         "description": ""
+    },
+    {
+        "code": "ES204",
+        "name": "Digital System",
+        "instructor": "Joycee Mekie",
+        "semester": "Autumn 2024-2025",
+        "schedule": "Lecture slots: F1, F2 Lab slots:  A2  /  B1 Note: Tutorials will be integrated with lectures.",
+        "classroom": "Lecture:10/103,  Labs: 10/104,10/105",
+        "prerequisites": "None",
+        "grading": "Quizzes \u2013 20% Mid-sem and End-Sem exams \u2013 40% Lab Evaluation \u2013 40%",
+        "description": "We will discuss concepts and designs of arithmetic circuits, state machines, registers, memories. At the end of the course, you will be able to design medium scale and large scale integrated circuits."
     }
 ]
