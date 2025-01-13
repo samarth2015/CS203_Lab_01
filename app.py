@@ -8,6 +8,8 @@ from opentelemetry import trace
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
+from opentelemetry.trace import SpanKind
+from opentelemetry.exporter.jaeger.thrift import JaegerExporter
 
 # Flask App Initialization
 app = Flask(__name__)
@@ -15,13 +17,18 @@ app.secret_key = 'secret'
 COURSE_FILE = 'course_catalog.json'
 
 # OpenTelemetry Configuration
-FlaskInstrumentor().instrument_app(app)
 
 # Tracing Configuration
 trace.set_tracer_provider(TracerProvider())
-console_exporter = ConsoleSpanExporter()
-span_processor = BatchSpanProcessor(console_exporter)
+
+jaeger_exporter = JaegerExporter(
+    agent_host_name="localhost",
+    agent_port=6831,
+)
+span_processor = BatchSpanProcessor(jaeger_exporter)
 trace.get_tracer_provider().add_span_processor(span_processor)
+
+FlaskInstrumentor().instrument_app(app)
 
 # Logging Configuration
 for handler in logging.root.handlers[:]:
@@ -110,4 +117,4 @@ def submitting():
     return redirect(url_for('course_catalog'))
    
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host="0.0.0.0", debug=True)
