@@ -1,33 +1,36 @@
 import json
 import os
-from flask import Flask, render_template, request, redirect, url_for, flash
+import time
+from flask import Flask, render_template, request, redirect, url_for, flash, g
 import logging
 from logging.handlers import RotatingFileHandler
-from flask import Flask
 from opentelemetry import trace
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
-from opentelemetry.trace import SpanKind
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.jaeger.thrift import JaegerExporter
 
 # Flask App Initialization
 app = Flask(__name__)
 app.secret_key = 'secret'
 COURSE_FILE = 'course_catalog.json'
+TELEMETRY_FILE = 'telemetry_data.json'
+
+# Telemetry Data Storage
+telemetry_data = {
+    "route_requests": {},
+    "route_processing_time": {},
+    "errors": {}
+}
 
 # OpenTelemetry Configuration
-
-# Tracing Configuration
 trace.set_tracer_provider(TracerProvider())
-
 jaeger_exporter = JaegerExporter(
     agent_host_name="localhost",
     agent_port=6831,
 )
 span_processor = BatchSpanProcessor(jaeger_exporter)
 trace.get_tracer_provider().add_span_processor(span_processor)
-
 FlaskInstrumentor().instrument_app(app)
 
 # Logging Configuration
@@ -62,7 +65,6 @@ def load_courses():
     with open(COURSE_FILE, 'r') as file:
         return json.load(file)
 
-
 def save_courses(data):
     """Save new course data to the JSON file."""
     courses = load_courses()  # Load existing courses
@@ -70,6 +72,33 @@ def save_courses(data):
     with open(COURSE_FILE, 'w') as file:
         json.dump(courses, file, indent=4)
 
+def save_telemetry():
+    """Save telemetry data to the JSON file."""
+    with open(TELEMETRY_FILE, 'w') as file:
+        json.dump(telemetry_data, file, indent=4)
+
+# Telemetry Tracking
+@app.before_request
+def before_request():
+    g.start_time = time.time()
+    route = request.endpoint
+    telemetry_data["route_requests"].setdefault(route, 0)
+    telemetry_data["route_requests"][route] += 1
+
+@app.after_request
+def after_request(response):
+    route = request.endpoint
+    processing_time = time.time() - g.start_time
+    telemetry_data["route_processing_time"].setdefault(route, 0)
+    telemetry_data["route_processing_time"][route] += processing_time
+    save_telemetry()
+    return response
+
+def log_error(error_message):
+    telemetry_data["errors"].setdefault(error_message, 0)
+    telemetry_data["errors"][error_message] += 1
+    logger.error(error_message)
+    save_telemetry()
 
 # Routes
 @app.route('/')
@@ -81,13 +110,14 @@ def course_catalog():
     courses = load_courses()
     return render_template('course_catalog.html', courses=courses)
 
-
 @app.route('/course/<code>')
 def course_details(code):
     courses = load_courses()
     course = next((course for course in courses if course['code'] == code), None)
     if not course:
-        flash(f"No course found with code '{code}'.", "error")
+        error_message = f"No course found with code '{code}'."
+        log_error(error_message)
+        flash(error_message, "error")
         return redirect(url_for('course_catalog'))
     return render_template('course_details.html', course=course)
 
@@ -95,26 +125,37 @@ def course_details(code):
 def forming():
     return render_template("form.html")
 
-@app.route('/submit_detail',methods=["POST","GET"])
+@app.route('/submit_detail', methods=["POST", "GET"])
 def submitting():
-    code=request.form["code"]
-    name=request.form["name"]
-    instructor=request.form["instructor"]
-    semester=request.form["semester"]
-    schedule=request.form["schedule"]
-    classroom=request.form["classroom"]
-    prerequisites=request.form["prerequisites"]
-    grading=request.form["grading"]
-    description=request.form["description"]
-    if code == "" or name == "" or instructor == "" or semester == "":
-        logger.error("Please fill in all the required fields")
-        flash("Some field were missing. Course Not Added", "error")
+    code = request.form.get("code")
+    name = request.form.get("name")
+    instructor = request.form.get("instructor")
+    semester = request.form.get("semester")
+    schedule = request.form.get("schedule")
+    classroom = request.form.get("classroom")
+    prerequisites = request.form.get("prerequisites")
+    grading = request.form.get("grading")
+    description = request.form.get("description")
+
+    if not all([code, name, instructor, semester]):
+        error_message = "Some fields were missing. Course Not Added."
+        log_error(error_message)
+        flash(error_message, "error")
     else:
-        course={"code":code,"name":name,"instructor":instructor,"semester":semester,"schedule":schedule,"classroom":classroom,
-                "prerequisites":prerequisites,"grading":grading,"description":description}
-        save_courses(course) 
+        course = {
+            "code": code,
+            "name": name,
+            "instructor": instructor,
+            "semester": semester,
+            "schedule": schedule,
+            "classroom": classroom,
+            "prerequisites": prerequisites,
+            "grading": grading,
+            "description": description
+        }
+        save_courses(course)
         flash(f"Course '{name}' has been successfully added!", "success")
     return redirect(url_for('course_catalog'))
-   
+
 if __name__ == '__main__':
     app.run(host="0.0.0.0", debug=True)

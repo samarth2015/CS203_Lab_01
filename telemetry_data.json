@@ -1,0 +1,15 @@
+{
+    "route_requests": {
+        "course_catalog": 2,
+        "forming": 1,
+        "submitting": 1
+    },
+    "route_processing_time": {
+        "course_catalog": 0.04297232627868652,
+        "forming": 0.0019807815551757812,
+        "submitting": 0.002473592758178711
+    },
+    "errors": {
+        "Some fields were missing. Course Not Added.": 1
+    }
+}
