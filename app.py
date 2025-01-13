@@ -49,12 +49,21 @@ class JsonFormatter(logging.Formatter):
             'line': record.lineno,
         }
         return json.dumps(log_record)
+    
+
+
+
+# File logging with rotation
+file_handler = RotatingFileHandler('application.log', maxBytes=5 * 1024 * 1024, backupCount=2)
+file_handler.setFormatter(JsonFormatter())
+
 
 logging.basicConfig(level=logging.DEBUG)
 handler = logging.StreamHandler()
 handler.setFormatter(JsonFormatter())
 logger = logging.getLogger('JsonLogger')
 logger.setLevel(logging.DEBUG)
+logger.addHandler(file_handler)
 logger.addHandler(handler)
 
 # Utility Functions
@@ -71,6 +80,7 @@ def save_courses(data):
     courses.append(data)  # Append the new course
     with open(COURSE_FILE, 'w') as file:
         json.dump(courses, file, indent=4)
+    logger.info(f"Course added: {data['name']} (Code: {data['code']})")
 
 def save_telemetry():
     """Save telemetry data to the JSON file."""
@@ -84,6 +94,7 @@ def before_request():
     route = request.endpoint
     telemetry_data["route_requests"].setdefault(route, 0)
     telemetry_data["route_requests"][route] += 1
+    logger.info(f"Processing request for route: {route}")
 
 @app.after_request
 def after_request(response):
@@ -91,6 +102,7 @@ def after_request(response):
     processing_time = time.time() - g.start_time
     telemetry_data["route_processing_time"].setdefault(route, 0)
     telemetry_data["route_processing_time"][route] += processing_time
+    logger.info(f"Route '{route}' processed in {processing_time:.4f} seconds")
     save_telemetry()
     return response
 
@@ -103,10 +115,12 @@ def log_error(error_message):
 # Routes
 @app.route('/')
 def index():
+    logger.info("Rendering index page")
     return render_template('index.html')
 
 @app.route('/catalog')
 def course_catalog():
+    logger.info("Rendering course catalog page")
     courses = load_courses()
     return render_template('course_catalog.html', courses=courses)
 
@@ -119,10 +133,12 @@ def course_details(code):
         log_error(error_message)
         flash(error_message, "error")
         return redirect(url_for('course_catalog'))
+    logger.info(f"Rendering details for course: {course['name']} (Code: {course['code']})")
     return render_template('course_details.html', course=course)
 
 @app.route('/form')
 def forming():
+    logger.info("Rendering course addition form")
     return render_template("form.html")
 
 @app.route('/submit_detail', methods=["POST", "GET"])
