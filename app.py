@@ -1,7 +1,6 @@
 import json
 import os
 import time
-from turtle import tracer
 from flask import Flask, render_template, request, redirect, url_for, flash, g
 import logging
 from logging.handlers import RotatingFileHandler
@@ -13,9 +12,9 @@ from opentelemetry.exporter.jaeger.thrift import JaegerExporter
 
 # Flask App Initialization
 app = Flask(__name__)
-app.secret_key = 'secret'
-COURSE_FILE = 'course_catalog.json'
-TELEMETRY_FILE = 'telemetry_data.json'
+app.secret_key = 'secret'  # Secret key for session management
+COURSE_FILE = 'course_catalog.json'  # File to store course data
+TELEMETRY_FILE = 'telemetry_data.json'  # File to store telemetry data
 
 # Telemetry Data Storage
 telemetry_data = {
@@ -23,8 +22,9 @@ telemetry_data = {
     "route_processing_time": {},
     "errors": {}
 }
-tracer = trace.get_tracer(__name__)
+
 # OpenTelemetry Configuration
+tracer = trace.get_tracer(__name__)
 trace.set_tracer_provider(TracerProvider())
 jaeger_exporter = JaegerExporter(
     agent_host_name="localhost",
@@ -38,7 +38,7 @@ FlaskInstrumentor().instrument_app(app)
 for handler in logging.root.handlers[:]:
     logging.root.removeHandler(handler)
 
-# Log to a file in JSON format
+# Custom JSON Formatter for logging
 class JsonFormatter(logging.Formatter):
     def format(self, record):
         log_record = {
@@ -50,15 +50,12 @@ class JsonFormatter(logging.Formatter):
             'line': record.lineno,
         }
         return json.dumps(log_record)
-    
-
-
 
 # File logging with rotation
 file_handler = RotatingFileHandler('application.log', maxBytes=5 * 1024 * 1024, backupCount=2)
 file_handler.setFormatter(JsonFormatter())
 
-
+# Basic logging configuration
 logging.basicConfig(level=logging.DEBUG)
 handler = logging.StreamHandler()
 handler.setFormatter(JsonFormatter())
@@ -73,10 +70,16 @@ def load_courses():
     if not os.path.exists(COURSE_FILE):
         return []  # Return an empty list if the file doesn't exist
     with tracer.start_as_current_span("Load Courses") as span:
-        with open(COURSE_FILE, 'r') as file:
-            courses = json.load(file)
-            span.set_attribute("course.count", len(courses))
-            return courses
+        try:
+            with open(COURSE_FILE, 'r') as file:
+                courses = json.load(file)
+                span.set_attribute("course.count", len(courses))
+                return courses
+        except json.JSONDecodeError as e:
+            error_message = f"Error decoding JSON from {COURSE_FILE}: {str(e)}"
+            span.set_attribute("error.message", error_message)
+            log_error(error_message)
+            return []  # Return an empty list if JSON is malformed
 
 def save_courses(data):
     """Save new course data to the JSON file."""
@@ -97,6 +100,7 @@ def save_telemetry():
 # Telemetry Tracking
 @app.before_request
 def before_request():
+    """Track the start time and increment request count for the route."""
     g.start_time = time.time()
     route = request.endpoint
     telemetry_data["route_requests"].setdefault(route, 0)
@@ -105,6 +109,7 @@ def before_request():
 
 @app.after_request
 def after_request(response):
+    """Track the processing time for the route and save telemetry data."""
     route = request.endpoint
     processing_time = time.time() - g.start_time
     telemetry_data["route_processing_time"].setdefault(route, 0)
@@ -114,6 +119,7 @@ def after_request(response):
     return response
 
 def log_error(error_message):
+    """Log an error message and save telemetry data."""
     telemetry_data["errors"].setdefault(error_message, 0)
     telemetry_data["errors"][error_message] += 1
     logger.error(error_message)
@@ -122,6 +128,7 @@ def log_error(error_message):
 # Routes
 @app.route('/')
 def index():
+    """Render the index page."""
     with tracer.start_as_current_span("Render Index") as span:
         span.set_attribute("http.method", request.method)
         span.set_attribute("client.ip", request.remote_addr)
@@ -130,6 +137,7 @@ def index():
 
 @app.route('/catalog')
 def course_catalog():
+    """Render the course catalog page."""
     with tracer.start_as_current_span("Render Course Catalog") as span:
         span.set_attribute("http.method", request.method)
         span.set_attribute("client.ip", request.remote_addr)
@@ -140,6 +148,7 @@ def course_catalog():
 
 @app.route('/course/<code>')
 def course_details(code):
+    """Render the details of a specific course."""
     with tracer.start_as_current_span("View Course Details") as span:
         span.set_attribute("http.method", request.method)
         span.set_attribute("client.ip", request.remote_addr)
@@ -160,21 +169,21 @@ def course_details(code):
 
 @app.route('/form')
 def forming():
-    # Start a span for the "Render Form" operation
+    """Render the form for adding a new course."""
     with tracer.start_as_current_span("Render Form") as span:
-        # Add trace attributes
         span.set_attribute("http.method", request.method)
         span.set_attribute("client.ip", request.remote_addr)
         span.set_attribute("form.name", "Course Submission Form")
-        
-        # Log the rendering of the form
-        logger.info("Rendering course addition form")
-        
-        # Render the form template
-        return render_template("form.html")
+    logger.info("Rendering course addition form")
+    return render_template("form.html")
 
 @app.route('/submit_detail', methods=["POST", "GET"])
 def submitting():
+    """
+    Handles the submission of course details via a form.
+    This route accepts both POST and GET requests. It collects course details from the form,
+    validates the required fields, and either saves the course or returns an error message.
+    """
     with tracer.start_as_current_span("Submit Course Details") as span:
         span.set_attribute("http.method", request.method)
         span.set_attribute("client.ip", request.remote_addr)
